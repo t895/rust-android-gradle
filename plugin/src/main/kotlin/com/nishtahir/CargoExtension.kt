@@ -2,10 +2,9 @@ package com.nishtahir
 
 import org.gradle.api.Action
 import org.gradle.api.GradleException
-import org.gradle.api.Project
 import org.gradle.process.ExecSpec
 import java.io.File
-import java.util.*
+import java.util.Properties
 
 sealed class Features {
     class All() : Features()

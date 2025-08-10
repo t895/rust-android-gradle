@@ -1,6 +1,10 @@
 package com.nishtahir
 
-import com.android.build.gradle.*
+import com.android.build.gradle.AppExtension
+import com.android.build.gradle.AppPlugin
+import com.android.build.gradle.BaseExtension
+import com.android.build.gradle.LibraryExtension
+import com.android.build.gradle.LibraryPlugin
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
 import org.gradle.api.Plugin

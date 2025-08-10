@@ -1,6 +1,10 @@
 package com.nishtahir
 
-import com.android.build.gradle.*
+import com.android.build.gradle.AppExtension
+import com.android.build.gradle.AppPlugin
+import com.android.build.gradle.BaseExtension
+import com.android.build.gradle.LibraryExtension
+import com.android.build.gradle.LibraryPlugin
 import org.apache.tools.ant.taskdefs.condition.Os
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
@@ -8,7 +12,6 @@ import org.gradle.api.Project
 import org.gradle.api.logging.LogLevel
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.TaskAction
-import java.io.ByteArrayOutputStream
 import java.io.File
 
 open class CargoBuildTask : DefaultTask() {
