@@ -71,7 +71,8 @@ open class CargoExtension {
                 return File(globalDir).absoluteFile
             }
 
-            var defaultDir = File(System.getProperty("java.io.tmpdir"), "rust-android-ndk-toolchains")
+            val defaultDir =
+                File(System.getProperty("java.io.tmpdir"), "rust-android-ndk-toolchains")
             return defaultDir.absoluteFile
         }
 

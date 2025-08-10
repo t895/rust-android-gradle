@@ -208,27 +208,23 @@ open class RustAndroidPlugin : Plugin<Project> {
 
         // Ensure that an API level is specified for all targets
         val apiLevel = cargoExtension.apiLevel
-        if (cargoExtension.apiLevels.size > 0) {
+        if (cargoExtension.apiLevels.isNotEmpty()) {
             if (apiLevel != null) {
                 throw GradleException("Cannot set both `apiLevel` and `apiLevels`")
             }
         } else {
-            val default = if (apiLevel != null) {
-                apiLevel
-            } else {
-                extensions[T::class].defaultConfig.minSdkVersion!!.apiLevel
-            }
-            cargoExtension.apiLevels = cargoExtension.targets!!.map { it to default }.toMap()
+            val default = apiLevel ?: extensions[T::class].defaultConfig.minSdkVersion!!.apiLevel
+            cargoExtension.apiLevels = cargoExtension.targets!!.associateWith { default }
         }
         val missingApiLevelTargets = cargoExtension.targets!!.toSet().minus(
             cargoExtension.apiLevels.keys)
-        if (missingApiLevelTargets.size > 0) {
+        if (missingApiLevelTargets.isNotEmpty()) {
             throw GradleException("`apiLevels` missing entries for: $missingApiLevelTargets")
         }
 
         extensions[T::class].apply {
-            sourceSets.getByName("main").jniLibs.srcDir(File("$buildDir/rustJniLibs/android"))
-            sourceSets.getByName("test").resources.srcDir(File("$buildDir/rustJniLibs/desktop"))
+            sourceSets.getByName("main").jniLibs.srcDir(File(project.layout.buildDirectory.asFile.get(), "/rustJniLibs/android"))
+            sourceSets.getByName("test").resources.srcDir(File(project.layout.buildDirectory.asFile.get(), "/rustJniLibs/desktop"))
         }
 
         // Determine the NDK version, if present
@@ -270,13 +266,27 @@ open class RustAndroidPlugin : Plugin<Project> {
 
         generateLinkerWrapper.apply {
             // From https://stackoverflow.com/a/320595.
-            from(rootProject.zipTree(File(RustAndroidPlugin::class.java.protectionDomain.codeSource.location.toURI()).path))
+            from(project.zipTree(File(RustAndroidPlugin::class.java.protectionDomain.codeSource.location.toURI()).path))
             include("**/linker-wrapper*")
-            into(File(rootProject.buildDir, "linker-wrapper"))
+            into(File(project.layout.buildDirectory.get().asFile, "linker-wrapper"))
             eachFile {
                 it.path = it.path.replaceFirst("com/nishtahir", "")
             }
-            fileMode = 493 // 0755 in decimal; Kotlin doesn't have octal literals (!).
+            filePermissions { permissions ->
+                permissions.user {
+                    it.read = true
+                    it.write = true
+                    it.execute = true
+                }
+                permissions.group {
+                    it.read = true
+                    it.execute = true
+                }
+                permissions.other {
+                    it.read = true
+                    it.execute = true
+                }
+            }
             includeEmptyDirs = false
             duplicatesStrategy = DuplicatesStrategy.EXCLUDE
         }
@@ -298,10 +308,10 @@ open class RustAndroidPlugin : Plugin<Project> {
                     }
                     .find { it.platform == target }
             if (theToolchain == null) {
-                throw GradleException("Target ${target} is not recognized (recognized targets: ${toolchains.map { it.platform }.sorted()}).  Check `local.properties` and `build.gradle`.")
+                throw GradleException("Target $target is not recognized (recognized targets: ${toolchains.map { it.platform }.sorted()}).  Check `local.properties` and `build.gradle`.")
             }
 
-            val targetBuildTask = tasks.maybeCreate("cargoBuild${target.capitalize()}",
+            val targetBuildTask = tasks.maybeCreate("cargoBuild${target.replaceFirstChar { it.lowercase() }}",
                     CargoBuildTask::class.java).apply {
                 group = RUST_TASK_GROUP
                 description = "Build library ($target)"
