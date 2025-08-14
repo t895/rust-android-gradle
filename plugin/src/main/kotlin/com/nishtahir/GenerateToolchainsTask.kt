@@ -1,23 +1,26 @@
 package com.nishtahir
 
 import com.android.build.gradle.AppExtension
-import com.android.build.gradle.AppPlugin
 import com.android.build.gradle.BaseExtension
 import com.android.build.gradle.LibraryExtension
-import com.android.build.gradle.LibraryPlugin
+import com.android.build.gradle.internal.plugins.AppPlugin
+import com.android.build.gradle.internal.plugins.LibraryPlugin
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
 import org.gradle.api.Project
+import org.gradle.api.provider.ProviderFactory
 import org.gradle.api.tasks.TaskAction
 import java.io.File
+import javax.inject.Inject
 
-open class GenerateToolchainsTask : DefaultTask() {
-
+abstract class GenerateToolchainsTask @Inject constructor(
+    val providerFactory: ProviderFactory
+) : DefaultTask() {
     @TaskAction
     @Suppress("unused")
     fun generateToolchainTask() {
         project.plugins.all {
-            when (it) {
+            when (this) {
                 is AppPlugin -> configureTask<AppExtension>(project)
                 is LibraryPlugin -> configureTask<LibraryExtension>(project)
             }
@@ -47,9 +50,9 @@ open class GenerateToolchainsTask : DefaultTask() {
                 // already. It is fast to do so and fixes any issues
                 // with partially reclaimed temporary files.
                 val dir = File(cargoExtension.toolchainDirectory, "$arch-$apiLevel")
-                val resultOutput = project.providers.exec { spec ->
-                    spec.commandLine(cargoExtension.pythonCommand)
-                    spec.args(
+                val resultOutput = providerFactory.exec {
+                    commandLine(cargoExtension.pythonCommand)
+                    args(
                         "$ndkPath/build/tools/make_standalone_toolchain.py",
                         "--arch=$arch",
                         "--api=$apiLevel",
@@ -58,7 +61,7 @@ open class GenerateToolchainsTask : DefaultTask() {
                     )
                 }
                 resultOutput.result.get()
-                project.logger.info(resultOutput.standardOutput.asText.get())
+                logger.info(resultOutput.standardOutput.asText.get())
             }
     }
 }

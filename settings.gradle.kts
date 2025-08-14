@@ -1,2 +1,2 @@
 rootProject.name = "rust-android"
-include ":plugin"
+include(":plugin")

@@ -1,0 +1,9 @@
+[versions]
+agp = "8.12.0"
+kotlin = "2.2.0"
+jvmToolchain = "21"
+pluginVersion = "0.9.6"
+
+[plugins]
+android-gradle = { id = "com.android.tools.build:gradle", version.ref = "agp" }
+kotlin-gradle = { id = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
