@@ -47,7 +47,8 @@ abstract class CargoBuildTask @Inject constructor(
         // something you should ever need to do currently, but we don't want it to ruin anyone's
         // day if it turns out we're wrong about that.
         val target =
-            extension.localProperties.getProperty("rust.cargoTargetDir", "CARGO_TARGET_DIR")
+            extension.localProperties.getProperty("rust.cargoTargetDir")
+                ?: System.getProperty("CARGO_TARGET_DIR")
                 ?: extension.targetDirectory
                 ?: "${extension.module!!}/target"
 
