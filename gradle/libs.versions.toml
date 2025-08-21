@@ -1,7 +1,7 @@
 [versions]
 agp = "8.12.0"
 kotlin = "2.2.0"
-jvmToolchain = "21"
+jvmToolchain = "17"
 pluginVersion = "0.9.6"
 
 [plugins]
