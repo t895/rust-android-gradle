@@ -1,6 +1,6 @@
 [versions]
 agp = "8.13.1"
-kotlin = "2.2.21"
+kotlin = "2.2.20"
 jvmToolchain = "17"
 pluginVersion = "0.9.6"
 
