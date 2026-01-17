@@ -27,10 +27,7 @@ abstract class CargoBuildTask @Inject constructor(
     fun build(): Unit = with(project) {
         val extension = extensions[CargoExtension::class]
         // Need to capture the value to dereference smoothly.
-        val toolchain = toolchain
-        if (toolchain == null) {
-            throw GradleException("toolchain cannot be null")
-        }
+        val toolchain = toolchain ?: throw GradleException("toolchain cannot be null")
 
         val ndk = ndk ?: throw GradleException("ndk cannot be null")
 

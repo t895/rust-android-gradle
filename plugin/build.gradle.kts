@@ -1,5 +1,4 @@
 plugins {
-    `java-gradle-plugin`
     `kotlin-dsl`
 }
 
@@ -23,6 +22,6 @@ kotlin {
 }
 
 dependencies {
-    implementation(gradleApi())
     compileOnly(libs.plugins.android.gradle.get().toString())
+    compileOnly(libs.plugins.kotlin.gradle.get().toString())
 }

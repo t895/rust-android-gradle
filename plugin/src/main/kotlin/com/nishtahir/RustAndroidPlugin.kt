@@ -1,9 +1,12 @@
 package com.nishtahir
 
-import com.android.build.gradle.AppExtension
+import com.android.build.api.dsl.ApplicationExtension
+import com.android.build.api.dsl.CommonExtension
+import com.android.build.api.dsl.LibraryExtension
+import com.android.build.api.variant.AndroidComponentsExtension
+import com.android.build.api.variant.ApplicationAndroidComponentsExtension
+import com.android.build.api.variant.LibraryAndroidComponentsExtension
 import com.android.build.gradle.AppPlugin
-import com.android.build.gradle.BaseExtension
-import com.android.build.gradle.LibraryExtension
 import com.android.build.gradle.LibraryPlugin
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
@@ -17,7 +20,6 @@ const val RUST_TASK_GROUP = "rust"
 
 enum class ToolchainType {
     ANDROID_PREBUILT,
-    ANDROID_GENERATED,
     DESKTOP,
 }
 
@@ -72,38 +74,6 @@ val toolchains = listOf(
         "<compilerTriple>",
         "<binutilsTriple>",
         "desktop/win32-x86-64"
-    ),
-    Toolchain(
-        "arm",
-        ToolchainType.ANDROID_GENERATED,
-        "armv7-linux-androideabi",
-        "arm-linux-androideabi",
-        "arm-linux-androideabi",
-        "android/armeabi-v7a"
-    ),
-    Toolchain(
-        "arm64",
-        ToolchainType.ANDROID_GENERATED,
-        "aarch64-linux-android",
-        "aarch64-linux-android",
-        "aarch64-linux-android",
-        "android/arm64-v8a"
-    ),
-    Toolchain(
-        "x86",
-        ToolchainType.ANDROID_GENERATED,
-        "i686-linux-android",
-        "i686-linux-android",
-        "i686-linux-android",
-        "android/x86"
-    ),
-    Toolchain(
-        "x86_64",
-        ToolchainType.ANDROID_GENERATED,
-        "x86_64-linux-android",
-        "x86_64-linux-android",
-        "x86_64-linux-android",
-        "android/x86_64"
     ),
     Toolchain(
         "arm",
@@ -201,14 +171,21 @@ abstract class RustAndroidPlugin : Plugin<Project> {
         project.afterEvaluate {
             project.plugins.all {
                 when (this) {
-                    is AppPlugin -> configurePlugin<AppExtension>(project)
-                    is LibraryPlugin -> configurePlugin<LibraryExtension>(project)
+                    is AppPlugin -> configurePlugin<ApplicationExtension, ApplicationAndroidComponentsExtension>(
+                        project
+                    )
+
+                    is LibraryPlugin -> configurePlugin<LibraryExtension, LibraryAndroidComponentsExtension>(
+                        project
+                    )
                 }
             }
         }
     }
 
-    private inline fun <reified T : BaseExtension> configurePlugin(project: Project) {
+    private inline fun <reified Common : CommonExtension, reified Component : AndroidComponentsExtension<*, *, *>> configurePlugin(
+        project: Project
+    ) {
         cargoExtension.localProperties = Properties()
 
         val localPropertiesFile = File(project.rootDir, "local.properties")
@@ -243,8 +220,7 @@ abstract class RustAndroidPlugin : Plugin<Project> {
                 throw GradleException("Cannot set both `apiLevel` and `apiLevels`")
             }
         } else {
-            val default =
-                apiLevel ?: project.extensions[T::class].defaultConfig.minSdkVersion!!.apiLevel
+            val default = apiLevel ?: project.extensions[Common::class].defaultConfig.minSdk!!
             cargoExtension.apiLevels = cargoExtension.targets!!.associateWith { default }
         }
         val missingApiLevelTargets = cargoExtension.targets!!.toSet().minus(
@@ -254,23 +230,23 @@ abstract class RustAndroidPlugin : Plugin<Project> {
             throw GradleException("`apiLevels` missing entries for: $missingApiLevelTargets")
         }
 
-        project.extensions[T::class].apply {
-            sourceSets.getByName("main").jniLibs.srcDir(
+        project.extensions[Common::class].apply {
+            sourceSets.getByName("main").jniLibs.directories.add(
                 File(
                     project.layout.buildDirectory.asFile.get(),
                     "/rustJniLibs/android"
-                )
+                ).absolutePath
             )
-            sourceSets.getByName("test").resources.srcDir(
+            sourceSets.getByName("test").resources.directories.add(
                 File(
                     project.layout.buildDirectory.asFile.get(),
                     "/rustJniLibs/desktop"
-                )
+                ).absolutePath
             )
         }
 
         // Determine the NDK version, if present
-        val ndk = project.extensions[T::class].ndkDirectory.let {
+        val ndk = project.extensions[Component::class].sdkComponents.ndkDirectory.get().asFile.let {
             val ndkSourceProperties = Properties()
             val ndkSourcePropertiesFile = File(it, "source.properties")
             if (ndkSourcePropertiesFile.exists()) {
@@ -278,28 +254,6 @@ abstract class RustAndroidPlugin : Plugin<Project> {
             }
             val ndkVersion = ndkSourceProperties.getProperty("Pkg.Revision", "0.0")
             Ndk(path = it, version = ndkVersion)
-        }
-
-        // Determine whether to use prebuilt or generated toolchains
-        val usePrebuilt =
-            cargoExtension.localProperties.getProperty("rust.prebuiltToolchains")?.equals("true")
-                ?: cargoExtension.prebuiltToolchains
-                ?: (ndk.versionMajor >= 19)
-
-        if (usePrebuilt && ndk.versionMajor < 19) {
-            throw GradleException("usePrebuilt = true requires NDK version 19+")
-        }
-
-        val generateToolchain = if (!usePrebuilt) {
-            project.tasks.maybeCreate(
-                "generateToolchains",
-                GenerateToolchainsTask::class.java
-            ).apply {
-                group = RUST_TASK_GROUP
-                description = "Generate standard toolchain for given architectures"
-            }
-        } else {
-            null
         }
 
         // Fish linker wrapper scripts from our Java resources.
@@ -350,13 +304,7 @@ abstract class RustAndroidPlugin : Plugin<Project> {
 
         cargoExtension.targets!!.forEach { target ->
             val theToolchain = toolchains
-                .filter {
-                    if (usePrebuilt) {
-                        it.type != ToolchainType.ANDROID_GENERATED
-                    } else {
-                        it.type != ToolchainType.ANDROID_PREBUILT
-                    }
-                }
+                .filter { it.type == ToolchainType.ANDROID_PREBUILT }
                 .find { it.platform == target }
             if (theToolchain == null) {
                 throw GradleException(
@@ -376,9 +324,6 @@ abstract class RustAndroidPlugin : Plugin<Project> {
                 this.ndk = ndk
             }
 
-            if (!usePrebuilt) {
-                targetBuildTask.dependsOn(generateToolchain!!)
-            }
             targetBuildTask.dependsOn(generateLinkerWrapper)
             buildTask.dependsOn(targetBuildTask)
         }
