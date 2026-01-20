@@ -13,6 +13,7 @@ import org.gradle.api.GradleException
 import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.api.file.DuplicatesStrategy
+import org.gradle.api.tasks.Copy
 import org.gradle.api.tasks.Sync
 import org.gradle.kotlin.dsl.register
 import java.io.File
@@ -306,37 +307,85 @@ abstract class RustAndroidPlugin : Plugin<Project> {
         // We're only interested in `host: `, which corresponds to the default target triple.
         val triplePrefix = "host: "
 
-        val triple = rustcVersionOutput.split("\n")
+        val defaultTargetTriple = rustcVersionOutput.split("\n")
             .find { it.startsWith(triplePrefix) }?.substring(triplePrefix.length)?.trim()
             ?: throw IllegalStateException("Failed to parse `rustc -Vv` output! (Please report a rust-android-gradle bug) - $rustcVersionOutput")
 
-        project.logger.info("Default rust target triple: $triple")
+        project.logger.info("Default rust target triple: $defaultTargetTriple")
 
         cargoExtension.targets!!.forEach { target ->
-            val theToolchain = toolchains
+            val toolchain = toolchains
                 .filter { it.type == ToolchainType.ANDROID_PREBUILT }
-                .find { it.platform == target }
-            if (theToolchain == null) {
-                throw GradleException(
-                    "Target $target is not recognized (recognized targets: ${
-                        toolchains.map { it.platform }.sorted()
-                    }).  Check `local.properties` and `build.gradle`."
-                )
-            }
+                .find { it.platform == target } ?: throw GradleException(
+                "Target $target is not recognized (recognized targets: ${
+                    toolchains.map { it.platform }.sorted()
+                }).  Check `local.properties` and `build.gradle`."
+            )
 
             val targetBuildTask =
-                project.tasks.register<CargoBuildTask>("cargoBuild${target.replaceFirstChar { it.lowercase() }}") {
+                project.tasks.register<CargoBuildTask>("cargoBuild$target") {
                     group = RUST_TASK_GROUP
                     description = "Build library ($target)"
-                    toolchain = theToolchain
+                    this.toolchain = toolchain
                     this.ndk = ndk
                     this.cargoExtension = this@RustAndroidPlugin.cargoExtension
-                    this.defaultTargetTriple = triple
+                    this.defaultTargetTriple = defaultTargetTriple
                     dependsOn(generateLinkerWrapper)
                 }
 
-            buildTask.configure {
+            val outputCopyTask = project.tasks.register<Copy>("copyCargoBuild${target}") {
+                group = RUST_TASK_GROUP
+
+                // CARGO_TARGET_DIR can be used to force the use of a global, shared target directory
+                // across all rust projects on a machine. Use it if it's set, otherwise use the
+                // configured `targetDirectory` value, and fall back to `${module}/target`.
+                //
+                // We also allow this to be specified in `local.properties`, not because this is
+                // something you should ever need to do currently, but we don't want it to ruin anyone's
+                // day if it turns out we're wrong about that.
+                val target =
+                    cargoExtension.localProperties.getProperty("rust.cargoTargetDir")
+                        ?: System.getProperty("CARGO_TARGET_DIR")
+                        ?: cargoExtension.targetDirectory
+                        ?: "${cargoExtension.module!!}/target"
+
+                var cargoOutputDir = File(
+                    if (toolchain.target == defaultTargetTriple) {
+                        "${target}/${cargoExtension.profile}"
+                    } else {
+                        "${target}/${toolchain.target}/${cargoExtension.profile}"
+                    }
+                )
+                if (!cargoOutputDir.isAbsolute) {
+                    cargoOutputDir =
+                        File(project.layout.projectDirectory.asFile, cargoOutputDir.path)
+                }
+                cargoOutputDir = cargoOutputDir.canonicalFile
+
+                val intoDir = File(
+                    project.layout.buildDirectory.get().asFile,
+                    "rustJniLibs/${toolchain.folder}",
+                )
+
+                from(cargoOutputDir)
+                into(intoDir)
+
+                // Need to capture the value to dereference smoothly.
+                val targetIncludes = cargoExtension.targetIncludes
+                if (targetIncludes != null) {
+                    include(targetIncludes.asIterable())
+                } else {
+                    // It's safe to unwrap, since we bailed at configuration time if this is unset.
+                    val libname = cargoExtension.libname!!
+                    include("lib${libname}.so")
+                    include("lib${libname}.dylib")
+                    include("${libname}.dll")
+                }
                 dependsOn(targetBuildTask)
+            }
+
+            buildTask.configure {
+                dependsOn(outputCopyTask)
             }
         }
     }

@@ -2,14 +2,10 @@ package com.nishtahir
 
 import org.apache.tools.ant.taskdefs.condition.Os
 import org.gradle.api.DefaultTask
-import org.gradle.api.file.DirectoryProperty
-import org.gradle.api.file.FileSystemOperations
 import org.gradle.api.file.ProjectLayout
 import org.gradle.api.logging.LogLevel
-import org.gradle.api.provider.Provider
 import org.gradle.api.provider.ProviderFactory
 import org.gradle.api.tasks.Input
-import org.gradle.api.tasks.OutputDirectory
 import org.gradle.api.tasks.TaskAction
 import java.io.File
 import javax.inject.Inject
@@ -17,7 +13,6 @@ import javax.inject.Inject
 abstract class CargoBuildTask @Inject constructor(
     private val providerFactory: ProviderFactory,
     private val projectLayout: ProjectLayout,
-    private val fileSystemOperations: FileSystemOperations
 ) : DefaultTask() {
     @get:Input
     abstract var toolchain: Toolchain
@@ -39,53 +34,6 @@ abstract class CargoBuildTask @Inject constructor(
             cargoExtension,
             defaultTargetTriple,
         )
-        // CARGO_TARGET_DIR can be used to force the use of a global, shared target directory
-        // across all rust projects on a machine. Use it if it's set, otherwise use the
-        // configured `targetDirectory` value, and fall back to `${module}/target`.
-        //
-        // We also allow this to be specified in `local.properties`, not because this is
-        // something you should ever need to do currently, but we don't want it to ruin anyone's
-        // day if it turns out we're wrong about that.
-        val target =
-            cargoExtension.localProperties.getProperty("rust.cargoTargetDir")
-                ?: System.getProperty("CARGO_TARGET_DIR")
-                ?: cargoExtension.targetDirectory
-                ?: "${cargoExtension.module!!}/target"
-
-        var cargoOutputDir = File(
-            if (toolchain.target == defaultTargetTriple) {
-                "${target}/${cargoExtension.profile}"
-            } else {
-                "${target}/${toolchain.target}/${cargoExtension.profile}"
-            }
-        )
-        if (!cargoOutputDir.isAbsolute) {
-            cargoOutputDir = File(projectLayout.projectDirectory.asFile, cargoOutputDir.path)
-        }
-        cargoOutputDir = cargoOutputDir.canonicalFile
-
-        val intoDir = File(
-            projectLayout.buildDirectory.get().asFile,
-            "rustJniLibs/${toolchain.folder}"
-        )
-        intoDir.mkdirs()
-
-        fileSystemOperations.copy {
-            from(cargoOutputDir)
-            into(intoDir)
-
-            // Need to capture the value to dereference smoothly.
-            val targetIncludes = cargoExtension.targetIncludes
-            if (targetIncludes != null) {
-                include(targetIncludes.asIterable())
-            } else {
-                // It's safe to unwrap, since we bailed at configuration time if this is unset.
-                val libname = cargoExtension.libname!!
-                include("lib${libname}.so")
-                include("lib${libname}.dylib")
-                include("${libname}.dll")
-            }
-        }
     }
 
     fun buildProjectForTarget(
