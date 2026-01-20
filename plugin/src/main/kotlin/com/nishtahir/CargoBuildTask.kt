@@ -2,11 +2,14 @@ package com.nishtahir
 
 import org.apache.tools.ant.taskdefs.condition.Os
 import org.gradle.api.DefaultTask
+import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.FileSystemOperations
 import org.gradle.api.file.ProjectLayout
 import org.gradle.api.logging.LogLevel
+import org.gradle.api.provider.Provider
 import org.gradle.api.provider.ProviderFactory
 import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.OutputDirectory
 import org.gradle.api.tasks.TaskAction
 import java.io.File
 import javax.inject.Inject
@@ -25,12 +28,16 @@ abstract class CargoBuildTask @Inject constructor(
     @get:Input
     abstract var cargoExtension: CargoExtension
 
+    @get:Input
+    abstract var defaultTargetTriple: String
+
     @TaskAction
     fun build() {
         buildProjectForTarget(
             toolchain,
             ndk,
-            cargoExtension
+            cargoExtension,
+            defaultTargetTriple,
         )
         // CARGO_TARGET_DIR can be used to force the use of a global, shared target directory
         // across all rust projects on a machine. Use it if it's set, otherwise use the
@@ -44,8 +51,6 @@ abstract class CargoBuildTask @Inject constructor(
                 ?: System.getProperty("CARGO_TARGET_DIR")
                 ?: cargoExtension.targetDirectory
                 ?: "${cargoExtension.module!!}/target"
-
-        val defaultTargetTriple = getDefaultTargetTriple(cargoExtension.rustcCommand)
 
         var cargoOutputDir = File(
             if (toolchain.target == defaultTargetTriple) {
@@ -86,10 +91,10 @@ abstract class CargoBuildTask @Inject constructor(
     fun buildProjectForTarget(
         toolchain: Toolchain,
         ndk: Ndk,
-        cargoExtension: CargoExtension
+        cargoExtension: CargoExtension,
+        defaultTargetTriple: String,
     ) {
         val apiLevel = cargoExtension.apiLevels[toolchain.platform]!!
-        val defaultTargetTriple = getDefaultTargetTriple(cargoExtension.rustcCommand)
 
         val resultOutput = providerFactory.exec {
             val module = File(cargoExtension.module!!)
@@ -279,33 +284,5 @@ abstract class CargoBuildTask @Inject constructor(
         val result = resultOutput.result.get()
         logger.info(resultOutput.standardOutput.asText.get())
         result.assertNormalExitValue()
-    }
-
-    fun getDefaultTargetTriple(rustc: String): String? {
-        val resultOutput = providerFactory.exec {
-            commandLine = listOf(rustc, "--version", "--verbose")
-        }
-        val result = resultOutput.result.get()
-        if (result.exitValue != 0) {
-            logger.warn(
-                "Failed to get default target triple from rustc (exit code: ${result.exitValue})"
-            )
-            return null
-        }
-        val output = resultOutput.standardOutput.asText.get()
-
-        // The `rustc --version --verbose` output contains a number of lines like `key: value`.
-        // We're only interested in `host: `, which corresponds to the default target triple.
-        val triplePrefix = "host: "
-
-        val triple = output.split("\n")
-            .find { it.startsWith(triplePrefix) }?.substring(triplePrefix.length)?.trim()
-
-        if (triple == null) {
-            logger.warn("Failed to parse `rustc -Vv` output! (Please report a rust-android-gradle bug)")
-        } else {
-            logger.info("Default rust target triple: $triple")
-        }
-        return triple
     }
 }

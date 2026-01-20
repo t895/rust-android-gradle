@@ -297,6 +297,21 @@ abstract class RustAndroidPlugin : Plugin<Project> {
             description = "Build library (all targets)"
         }
 
+        val rustcVersionExec = project.providers.exec {
+            commandLine(cargoExtension.rustcCommand, "--version", "--verbose")
+        }
+        rustcVersionExec.result.get().assertNormalExitValue()
+        val rustcVersionOutput = rustcVersionExec.standardOutput.asText.get()
+        // The `rustc --version --verbose` output contains a number of lines like `key: value`.
+        // We're only interested in `host: `, which corresponds to the default target triple.
+        val triplePrefix = "host: "
+
+        val triple = rustcVersionOutput.split("\n")
+            .find { it.startsWith(triplePrefix) }?.substring(triplePrefix.length)?.trim()
+            ?: throw IllegalStateException("Failed to parse `rustc -Vv` output! (Please report a rust-android-gradle bug) - $rustcVersionOutput")
+
+        project.logger.info("Default rust target triple: $triple")
+
         cargoExtension.targets!!.forEach { target ->
             val theToolchain = toolchains
                 .filter { it.type == ToolchainType.ANDROID_PREBUILT }
@@ -316,6 +331,7 @@ abstract class RustAndroidPlugin : Plugin<Project> {
                     toolchain = theToolchain
                     this.ndk = ndk
                     this.cargoExtension = this@RustAndroidPlugin.cargoExtension
+                    this.defaultTargetTriple = triple
                     dependsOn(generateLinkerWrapper)
                 }
 
