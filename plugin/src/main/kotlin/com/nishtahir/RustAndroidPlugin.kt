@@ -13,6 +13,8 @@ import org.gradle.api.GradleException
 import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.api.file.DuplicatesStrategy
+import org.gradle.api.tasks.Sync
+import org.gradle.kotlin.dsl.register
 import java.io.File
 import java.util.Properties
 
@@ -257,47 +259,40 @@ abstract class RustAndroidPlugin : Plugin<Project> {
         }
 
         // Fish linker wrapper scripts from our Java resources.
-        val generateLinkerWrapper = project.rootProject.tasks.maybeCreate(
-            "generateLinkerWrapper",
-            GenerateLinkerWrapperTask::class.java
-        ).apply {
-            group = RUST_TASK_GROUP
-            description = "Generate shared linker wrapper script"
-        }
+        val generateLinkerWrapper =
+            project.rootProject.tasks.register<Sync>("generateLinkerWrapper") {
+                group = RUST_TASK_GROUP
+                description = "Generate shared linker wrapper script"
 
-        generateLinkerWrapper.apply {
-            // From https://stackoverflow.com/a/320595.
-            from(project.zipTree(File(RustAndroidPlugin::class.java.protectionDomain.codeSource.location.toURI()).path))
-            include("**/linker-wrapper*")
-            into(File(project.layout.buildDirectory.get().asFile, "linker-wrapper"))
-            eachFile {
-                this.path = this.path.replaceFirst("com/nishtahir", "")
-            }
-            filePermissions {
-                with(this@filePermissions) {
-                    user {
-                        read = true
-                        write = true
-                        execute = true
-                    }
-                    group {
-                        read = true
-                        execute = true
-                    }
-                    other {
-                        read = true
-                        execute = true
+                // From https://stackoverflow.com/a/320595.
+                from(project.zipTree(File(RustAndroidPlugin::class.java.protectionDomain.codeSource.location.toURI()).path))
+                include("**/linker-wrapper*")
+                into(File(project.layout.buildDirectory.get().asFile, "linker-wrapper"))
+                eachFile {
+                    this.path = this.path.replaceFirst("com/nishtahir", "")
+                }
+                filePermissions {
+                    with(this@filePermissions) {
+                        user {
+                            read = true
+                            write = true
+                            execute = true
+                        }
+                        group {
+                            read = true
+                            execute = true
+                        }
+                        other {
+                            read = true
+                            execute = true
+                        }
                     }
                 }
+                includeEmptyDirs = false
+                duplicatesStrategy = DuplicatesStrategy.EXCLUDE
             }
-            includeEmptyDirs = false
-            duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-        }
 
-        val buildTask = project.tasks.maybeCreate(
-            "cargoBuild",
-            DefaultTask::class.java
-        ).apply {
+        val buildTask = project.tasks.register<DefaultTask>("cargoBuild") {
             group = RUST_TASK_GROUP
             description = "Build library (all targets)"
         }
@@ -314,18 +309,19 @@ abstract class RustAndroidPlugin : Plugin<Project> {
                 )
             }
 
-            val targetBuildTask = project.tasks.maybeCreate(
-                "cargoBuild${target.replaceFirstChar { it.lowercase() }}",
-                CargoBuildTask::class.java
-            ).apply {
-                group = RUST_TASK_GROUP
-                description = "Build library ($target)"
-                toolchain = theToolchain
-                this.ndk = ndk
-            }
+            val targetBuildTask =
+                project.tasks.register<CargoBuildTask>("cargoBuild${target.replaceFirstChar { it.lowercase() }}") {
+                    group = RUST_TASK_GROUP
+                    description = "Build library ($target)"
+                    toolchain = theToolchain
+                    this.ndk = ndk
+                    this.cargoExtension = this@RustAndroidPlugin.cargoExtension
+                    dependsOn(generateLinkerWrapper)
+                }
 
-            targetBuildTask.dependsOn(generateLinkerWrapper)
-            buildTask.dependsOn(targetBuildTask)
+            buildTask.configure {
+                dependsOn(targetBuildTask)
+            }
         }
     }
 }

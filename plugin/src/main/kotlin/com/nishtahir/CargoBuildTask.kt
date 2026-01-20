@@ -2,7 +2,6 @@ package com.nishtahir
 
 import org.apache.tools.ant.taskdefs.condition.Os
 import org.gradle.api.DefaultTask
-import org.gradle.api.GradleException
 import org.gradle.api.file.FileSystemOperations
 import org.gradle.api.file.ProjectLayout
 import org.gradle.api.logging.LogLevel
@@ -17,24 +16,21 @@ abstract class CargoBuildTask @Inject constructor(
     private val projectLayout: ProjectLayout,
     private val fileSystemOperations: FileSystemOperations
 ) : DefaultTask() {
-    @Input
-    var toolchain: Toolchain? = null
+    @get:Input
+    abstract var toolchain: Toolchain
 
-    @Input
-    var ndk: Ndk? = null
+    @get:Input
+    abstract var ndk: Ndk
+
+    @get:Input
+    abstract var cargoExtension: CargoExtension
 
     @TaskAction
-    fun build(): Unit = with(project) {
-        val extension = extensions[CargoExtension::class]
-        // Need to capture the value to dereference smoothly.
-        val toolchain = toolchain ?: throw GradleException("toolchain cannot be null")
-
-        val ndk = ndk ?: throw GradleException("ndk cannot be null")
-
+    fun build() {
         buildProjectForTarget(
             toolchain,
             ndk,
-            extension
+            cargoExtension
         )
         // CARGO_TARGET_DIR can be used to force the use of a global, shared target directory
         // across all rust projects on a machine. Use it if it's set, otherwise use the
@@ -44,18 +40,18 @@ abstract class CargoBuildTask @Inject constructor(
         // something you should ever need to do currently, but we don't want it to ruin anyone's
         // day if it turns out we're wrong about that.
         val target =
-            extension.localProperties.getProperty("rust.cargoTargetDir")
+            cargoExtension.localProperties.getProperty("rust.cargoTargetDir")
                 ?: System.getProperty("CARGO_TARGET_DIR")
-                ?: extension.targetDirectory
-                ?: "${extension.module!!}/target"
+                ?: cargoExtension.targetDirectory
+                ?: "${cargoExtension.module!!}/target"
 
-        val defaultTargetTriple = getDefaultTargetTriple(extension.rustcCommand)
+        val defaultTargetTriple = getDefaultTargetTriple(cargoExtension.rustcCommand)
 
         var cargoOutputDir = File(
             if (toolchain.target == defaultTargetTriple) {
-                "${target}/${extension.profile}"
+                "${target}/${cargoExtension.profile}"
             } else {
-                "${target}/${toolchain.target}/${extension.profile}"
+                "${target}/${toolchain.target}/${cargoExtension.profile}"
             }
         )
         if (!cargoOutputDir.isAbsolute) {
@@ -74,12 +70,12 @@ abstract class CargoBuildTask @Inject constructor(
             into(intoDir)
 
             // Need to capture the value to dereference smoothly.
-            val targetIncludes = extension.targetIncludes
+            val targetIncludes = cargoExtension.targetIncludes
             if (targetIncludes != null) {
                 include(targetIncludes.asIterable())
             } else {
                 // It's safe to unwrap, since we bailed at configuration time if this is unset.
-                val libname = extension.libname!!
+                val libname = cargoExtension.libname!!
                 include("lib${libname}.so")
                 include("lib${libname}.dylib")
                 include("${libname}.dll")
