@@ -24,21 +24,11 @@ abstract class CargoBuildTask @Inject constructor(
     abstract var defaultTargetTriple: String
 
     override fun exec() {
-        configure(
-            toolchain,
-            ndk,
-            cargoExtension,
-            defaultTargetTriple,
-        )
+        configure()
         super.exec()
     }
 
-    private fun configure(
-        toolchain: Toolchain,
-        ndk: Ndk,
-        cargoExtension: CargoExtension,
-        defaultTargetTriple: String,
-    ) {
+    private fun configure() {
         val apiLevel = cargoExtension.apiLevels[toolchain.platform]!!
 
         val module = File(cargoExtension.module!!)
